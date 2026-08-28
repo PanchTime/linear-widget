@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "grigorip.linear",
+  "name": "Linear",
+  "version": "1.0.0",
+  "author": "grigorip",
+  "license": "MIT",
+  "description": "Multi-account Linear issues in the Omarchy bar: filter by account, team, and project with persistent prefs.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Linear",
+    "description": "Linear issues for personal and work accounts, with saved filters.",
+    "category": "Work",
+    "aliases": ["linear", "issues", "tickets"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 90
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 15,
+        "max": 3600,
+        "step": 15,
+        "defaultValue": 90
+      }
+    ]
+  }
+}

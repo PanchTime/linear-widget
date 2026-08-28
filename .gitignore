@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.qmlc
+*~
+*.swp
+.DS_Store
+
+# Local secrets — tokens live in ~/.config/omarchy/linear/, never here
+accounts.json
+*.token
+.env
+.env.*
