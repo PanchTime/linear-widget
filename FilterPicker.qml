@@ -154,6 +154,7 @@ Item {
         anchors.leftMargin: Style.spacing.controlPaddingX
         anchors.rightMargin: Style.spacing.md
         text: root.selectionLabel() || root.emptyLabel
+        textFormat: Text.PlainText
         color: root.selectionLabel() ? root.foreground : Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -266,6 +267,7 @@ Item {
                 width: parent.width - mark.width - parent.spacing
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.optionLabel(modelData)
+                textFormat: Text.PlainText
                 color: index === root.currentIndex ? Style.hoverStateColor(root.foreground, root.accent) : root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body

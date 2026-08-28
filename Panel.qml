@@ -83,12 +83,16 @@ Panel {
     function refresh(): string { linear.refresh(); return "ok" }
   }
 
+  function asPlain(s) {
+    return String(s || "").replace(/[<>]/g, "")
+  }
+
   readonly property string heroMeta: {
     if (!linear.configured) return "Connect a Linear API token"
-    if (linear.lastError) return linear.lastError
+    if (linear.lastError) return asPlain(linear.lastError)
     if (linear.loading && linear.issueCount === 0) return "Loading issues"
-    var bits = [linear.accountName]
-    if (linear.statusText) bits.push(linear.statusText)
+    var bits = [asPlain(linear.accountName)]
+    if (linear.statusText) bits.push(asPlain(linear.statusText))
     return bits.join(" · ")
   }
 
@@ -503,6 +507,7 @@ Panel {
             visible: linear.lastError !== ""
             width: parent.width
             text: linear.lastError
+            textFormat: Text.PlainText
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
@@ -601,6 +606,7 @@ Panel {
                 Text {
                   Layout.fillWidth: true
                   text: String(modelData.name || modelData.id)
+                  textFormat: Text.PlainText
                   color: {
                     var id = String(modelData.id || "")
                     var ids = linear.accountIds || []
@@ -786,6 +792,7 @@ Panel {
         Text {
           visible: linear.multiAccount && issue && issue.accountName
           text: issue ? String(issue.accountName || "") : ""
+          textFormat: Text.PlainText
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -793,6 +800,7 @@ Panel {
 
         Text {
           text: issue ? String(issue.identifier || "") : ""
+          textFormat: Text.PlainText
           color: Color.accent
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -802,6 +810,7 @@ Panel {
         Text {
           Layout.fillWidth: true
           text: issue ? String(issue.state || "") : ""
+          textFormat: Text.PlainText
           color: issue && issue.stateColor ? issue.stateColor : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -827,6 +836,7 @@ Panel {
       Text {
         width: parent.width
         text: issue ? String(issue.title || "") : ""
+        textFormat: Text.PlainText
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -837,6 +847,7 @@ Panel {
       Text {
         visible: issue && (issue.teamKey || issue.projectName || issue.herdrLabel || issue.prUrl)
         width: parent.width
+        textFormat: Text.PlainText
         text: {
           if (!issue) return ""
           var bits = []

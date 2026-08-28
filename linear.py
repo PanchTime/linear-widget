@@ -12,8 +12,10 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -47,6 +49,15 @@ AGENT_CONTINUE_ARGS = {
     "claude": ["--continue"],
     "codex": ["resume", "--last"],
 }
+MAX_JSON_BYTES = 256 * 1024
+MAX_HTTP_BYTES = 2 * 1024 * 1024
+_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
+_OPEN_NOFOLLOW = os.O_RDONLY | os.O_NOFOLLOW | _CLOEXEC
+_DIR_NOFOLLOW = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | _CLOEXEC
+
+
+class ResponseTooLarge(ValueError):
+    pass
 
 
 def fail(message: str, code: int = 1) -> None:
@@ -59,21 +70,89 @@ def emit(payload: dict) -> None:
     sys.stdout.write("\n")
 
 
+def read_limited(fp, limit: int) -> bytes:
+    data = fp.read(limit + 1)
+    if not data:
+        return b""
+    if len(data) > limit:
+        raise ResponseTooLarge(f"response exceeds {limit} bytes")
+    return data
+
+
+def ensure_private_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        fd = os.open(path, _DIR_NOFOLLOW)
+    except OSError as exc:
+        raise OSError(f"refusing unsafe directory {path}: {exc}") from exc
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISDIR(st.st_mode):
+            raise OSError(f"not a directory: {path}")
+        if st.st_uid != os.getuid():
+            raise OSError(f"directory not owned by current user: {path}")
+        if stat.S_IMODE(st.st_mode) & 0o077:
+            os.fchmod(fd, 0o700)
+    finally:
+        os.close(fd)
+
+
 def read_json(path: Path, fallback):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        fd = os.open(path, _OPEN_NOFOLLOW)
     except FileNotFoundError:
         return fallback
-    except (OSError, json.JSONDecodeError):
+    except OSError:
         return fallback
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            return fallback
+        if st.st_uid != os.getuid():
+            return fallback
+        if st.st_size > MAX_JSON_BYTES:
+            return fallback
+        buf = bytearray()
+        while True:
+            chunk = os.read(fd, min(65536, MAX_JSON_BYTES + 1 - len(buf)))
+            if not chunk:
+                break
+            buf.extend(chunk)
+            if len(buf) > MAX_JSON_BYTES:
+                return fallback
+        return json.loads(buf.decode("utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return fallback
+    finally:
+        os.close(fd)
 
 
 def write_json(path: Path, payload, mode: int = 0o600) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.chmod(tmp, mode)
-    tmp.replace(path)
+    parent = path.parent
+    ensure_private_dir(parent)
+    data = (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    if len(data) > MAX_JSON_BYTES:
+        raise OSError("JSON payload exceeds size limit")
+    fd, tmp_name = tempfile.mkstemp(prefix=".linear-", suffix=".tmp", dir=str(parent))
+    replaced = False
+    try:
+        os.fchmod(fd, mode)
+        written = 0
+        while written < len(data):
+            written += os.write(fd, data[written:])
+        os.fsync(fd)
+        os.close(fd)
+        fd = -1
+        os.replace(tmp_name, path)
+        replaced = True
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if not replaced:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
 
 
 def load_accounts() -> list[dict]:
@@ -238,17 +317,32 @@ def graphql_call(token: str, query: str, variables: dict | None = None) -> tuple
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+            raw = read_limited(response, MAX_HTTP_BYTES)
+            payload = json.loads(raw.decode("utf-8"))
+    except ResponseTooLarge:
+        return {}, "Linear response exceeds size limit"
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", "replace")
+        try:
+            detail = read_limited(exc, MAX_HTTP_BYTES).decode("utf-8", "replace")
+        except ResponseTooLarge:
+            return {}, f"Linear HTTP {exc.code}"
+        except OSError:
+            return {}, f"Linear HTTP {exc.code}"
+        finally:
+            try:
+                exc.close()
+            except OSError:
+                pass
         try:
             parsed = json.loads(detail)
             message = parsed.get("errors", [{}])[0].get("message") or f"Linear HTTP {exc.code}"
-        except Exception:
+        except (json.JSONDecodeError, TypeError, IndexError, AttributeError):
             message = f"Linear HTTP {exc.code}"
         return {}, message
     except urllib.error.URLError as exc:
         return {}, f"Linear network error: {exc.reason}"
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}, "Linear returned invalid JSON"
     if payload.get("errors"):
         return payload.get("data") or {}, "; ".join(
             str(err.get("message") or err) for err in payload["errors"]
