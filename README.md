@@ -2,6 +2,8 @@
 
 Omarchy bar widget for [Linear](https://linear.app) issues: multi-account filters, Herdr worktrees, the default editor, and GitLab/GitHub merge-request links.
 
+Enter or left-click opens the ticket's git worktree in Herdr (if `herdr` is on PATH) and can start or resume the agent chosen in Filters. Herdr is optional: the issue list still works without it.
+
 Plugin id: `grigorip.linear`.
 
 ## Install

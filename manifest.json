@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "grigorip",
   "license": "MIT",
-  "description": "Multi-account Linear issues in the Omarchy bar: filter by account, team, and project with persistent prefs.",
+  "description": "Multi-account Linear issues in the Omarchy bar: saved filters, optional Herdr worktrees, the default editor, and GitLab/GitHub MR/PR links.",
   "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Linear",
-    "description": "Linear issues for personal and work accounts, with saved filters.",
+    "description": "Linear issues for personal and work accounts, with saved filters and optional Herdr worktrees.",
     "category": "Work",
     "aliases": ["linear", "issues", "tickets"],
     "allowMultiple": false,
