@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -49,6 +50,10 @@ AGENT_CONTINUE_ARGS = {
     "claude": ["--continue"],
     "codex": ["resume", "--last"],
 }
+SESSION_ID_DIR_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.I,
+)
 MAX_JSON_BYTES = 256 * 1024
 MAX_HTTP_BYTES = 2 * 1024 * 1024
 _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
@@ -818,19 +823,72 @@ def panes_in_workspace(workspace_id: str) -> list[dict]:
     return herdr_result(payload).get("panes") or []
 
 
-def grok_has_session(worktree: str) -> bool:
+def grok_home() -> Path:
+    raw = str(os.environ.get("GROK_HOME") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return HOME / ".grok"
+
+
+def grok_cwd_keys(worktree: str) -> list[str]:
+    keys: list[str] = []
+    seen: set[str] = set()
+    raw = os.path.normpath(os.path.expanduser(str(worktree or "").strip()))
+    resolved = resolved_or_none(Path(raw)) if raw and raw != "." else None
+    for candidate in (raw, str(resolved) if resolved is not None else ""):
+        key = candidate.rstrip("/") or ("/" if candidate.startswith("/") else "")
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+def session_group_populated(group: Path) -> bool:
     try:
-        completed = subprocess.run(
-            ["grok", "sessions", "list", "-n", "1"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=8,
-            cwd=worktree,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        for child in group.iterdir():
+            if child.is_dir() and SESSION_ID_DIR_RE.fullmatch(child.name):
+                return True
+    except OSError:
         return False
-    return bool(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-", completed.stdout or "", re.I))
+    return False
+
+
+def grok_has_session(worktree: str) -> bool:
+    """True only if this worktree cwd already has a local Grok session on disk.
+
+    `grok sessions list` is repo-wide (and includes remote rows), so a UUID in
+    that output is not enough. `grok --continue` looks up the current cwd and
+    errors with "No session found for current directory" when none exists.
+    """
+    keys = grok_cwd_keys(worktree)
+    if not keys:
+        return False
+    root = grok_home() / "sessions"
+    if not root.is_dir():
+        return False
+    encoded = {urllib.parse.quote(key, safe="") for key in keys}
+    wanted = set(keys)
+    for name in encoded:
+        if session_group_populated(root / name):
+            return True
+    try:
+        groups = list(root.iterdir())
+    except OSError:
+        return False
+    for group in groups:
+        if not group.is_dir() or group.name in encoded:
+            continue
+        cwd_file = group / ".cwd"
+        if not cwd_file.is_file():
+            continue
+        try:
+            recorded = cwd_file.read_text(encoding="utf-8").strip().rstrip("/")
+        except OSError:
+            continue
+        if recorded in wanted and session_group_populated(group):
+            return True
+    return False
 
 
 def continue_args_for(kind: str, worktree: str) -> list[str]:

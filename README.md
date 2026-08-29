@@ -2,7 +2,7 @@
 
 Omarchy bar widget for [Linear](https://linear.app) issues: multi-account filters, Herdr worktrees, the default editor, and GitLab/GitHub merge-request links.
 
-Enter or left-click opens the ticket's git worktree in Herdr (if `herdr` is on PATH) and can start or resume the agent chosen in Filters. Herdr is optional: the issue list still works without it.
+Enter or left-click opens the ticket's git worktree in Herdr (if `herdr` is on PATH) and can start or resume the agent chosen in Filters. For Grok, Herdr starts a **new** session when that directory has none, and passes `--continue` only when a session already exists there. Herdr is optional: the issue list still works without it.
 
 Plugin id: `grigorip.linear`.
 
@@ -70,6 +70,8 @@ branch: feature/123-short-slug
 * Worktree: `~/work/your-trees/ENG-123-short-slug`
 ```
 
+A Grok skill can write that block for you — see [Ticket bootstrap skill](#ticket-bootstrap-skill-optional).
+
 ### Merge request / pull request (`p`)
 
 `p` (and middle-click) opens an `https://` GitLab MR or GitHub PR. The widget uses the first match:
@@ -99,6 +101,58 @@ If none of those exist, `p` does nothing and the status line says so.
 | Esc | Close picker, folds, then panel |
 
 Left click a ticket: Herdr. Right click: Linear. Middle click: MR/PR.
+
+## Ticket bootstrap skill (optional)
+
+This plugin lists issues and opens an existing worktree. It does **not** create Linear tickets, branches, or git worktrees.
+
+Pair it with a Grok skill that:
+
+1. Creates a Linear issue assigned to you
+2. Adds a git worktree under a folder you choose
+3. Writes `branch:` and `* Worktree: <path>` onto the issue (the format above)
+
+### Copy the template
+
+The repo ships a generic skill at `skills/ticket-worktree/`. Copy it into Grok user skills, then **replace every `REPLACE_ME`** in the Defaults table (team, main checkout, base ref, worktree folder, branch scheme). Do not commit your filled-in paths back to this plugin.
+
+```bash
+mkdir -p ~/.grok/skills
+cp -r /path/to/linear-widget/skills/ticket-worktree ~/.grok/skills/ticket-worktree
+# edit ~/.grok/skills/ticket-worktree/SKILL.md — fill the Defaults table
+chmod +x ~/.grok/skills/ticket-worktree/scripts/open-grok-worktree.sh
+```
+
+Then in Grok: `/ticket-worktree`. Duplicate the skill directory (new `name:` in frontmatter) if you have more than one repo layout.
+
+### Or use `/create-skill`
+
+In Grok, run `/create-skill`, pick **User** scope, and describe the same workflow. Keep the Defaults table and the Linear `Worktree:` line — the widget will not open Herdr without that line. A short prompt you can paste:
+
+```text
+Name: ticket-worktree
+Scope: user
+What it should do: Bootstrap a Linear ticket with a git worktree.
+Create a Linear issue assigned to me, create a branch + worktree under a
+folder I configure, write `branch:` and `* Worktree: <absolute-or-~/work/path>`
+onto the Linear description, and later remove the worktree after merge and
+mark the issue Done. Do not implement the ticket during bootstrap.
+
+Put a Defaults table at the top with placeholders I must fill before first use:
+- Linear team
+- Main checkout (absolute path)
+- Base ref (origin/main or origin/master)
+- Worktree root (absolute folder under ~/work or ~/personal)
+- Branch source: `linear` (Linear gitBranchName) or `custom` (pattern I supply)
+- Optional extra symlinks from main into the worktree
+
+If any value is still REPLACE_ME, ask — do not guess. Stop on branch/path
+collision. Never push or open an MR unless I ask later.
+```
+
+Fill the placeholders in the generated `SKILL.md` (`~/.grok/skills/ticket-worktree/SKILL.md`) before the first run.
+
+The template in this repo is the same idea, already written. Prefer copying it over generating a second copy.
 
 ## Settings
 
